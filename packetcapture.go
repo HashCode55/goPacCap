@@ -1,9 +1,8 @@
 // Package paccap provides an easy-to-use interface for capturing
-// and analysing the packets.
+// and inspecting the packets.
 package gopaccap
 
-// TODO: Expose two functions - ReadPcap and LiveCapture
-// TODO: implement cache for keeping src IP and destination port, expiring after 5 minutes
+// TODO: implement cache from scratch.
 
 import (
 	"fmt"
@@ -41,29 +40,35 @@ var (
 
 var logger = log.New()
 
-type paccap struct {
-	ipcache *cache.Cache
+// Paccap is the enclosing packet capture struct. It encapsulates a
+// *cache.Cache object and a flag for logging the cache.
+type Paccap struct {
+	ipcache *cache.Cache // cache object
+	lc      bool         // flag for caching the log. Ignored while reading pcap files.
 }
 
 /////////////////////////
 //  Exposed Functions  //
 /////////////////////////
 
-// PacketCapture creates a new instance of the packet capturing
-// device.
-func PacketCapture() *paccap {
-	// create a new cache with 5 minute expiration
-	// and a purge time of 5 minutes
-	ipc := cache.New(5*time.Minute, 5*time.Minute)
-	// new instance of paccap
-	pc := &paccap{ipcache: ipc}
+// PacketCapture creates a new instance of the Paccap
+// struct initialising the cache.
+// It takes a two arguments, cache expiration time and
+// a bool value specifying whether to log cache hits or not.
+func PacketCapture(exptime int, logcache bool) *Paccap {
+	// create a new cache with 'exptime' mins expiration
+	// and a purge time of 'exptime'.
+	et := time.Duration(exptime)
+	ipc := cache.New(et*time.Minute, et*time.Minute)
+	// new instance of Paccap
+	pc := &Paccap{ipcache: ipc, lc: logcache}
 	return pc
 }
 
 // ReadPcap reads the pcap files from the specified path and
-// logs the packet details.
-func (pc *paccap) ReadPcap(filter, path string) []string {
-	fmt.Println(banner)
+// logs the packet details. It takes two arguments, a packet filter
+// specified as BPF, and the path of the pcap files.
+func (pc *Paccap) ReadPcap(filter, path string) []string {
 	logger.Infof("[PacCap ] Starting to read from pcap file...")
 	fmt.Println()
 	packetSource, err := readPackets(filter, path)
@@ -74,25 +79,23 @@ func (pc *paccap) ReadPcap(filter, path string) []string {
 	var packetdetails []string
 
 	for packet := range packetSource.Packets() {
-		//TODO: Insert a delay for the streamlined info
 		sip, dip := getIPAddresses(packet)
 		spn, dpn := getPortAddresses(packet)
-		logger.Infof("[PacCap ] Packet Captured! SOURCE %v:%v | DESTINATION %v:%v",
+		logger.Infof("[PacCap ] Packet Details -- SOURCE %v:%v | DESTINATION %v:%v",
 			sip, spn, dip, dpn)
 
 		s := fmt.Sprintf("src %s:%s | dst %s:%s", sip, spn, dip, dpn)
 		packetdetails = append(packetdetails, s)
-
-		// adding src ip and destination to the cache
-		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
 		fmt.Println()
 	}
 	return packetdetails
 }
 
 // LiveCapture attaches with the NIC specified and starts capturing
-// the packets logging the packet details
-func (pc *paccap) LiveCapture(filter, device string) {
+// the packets logging the packet details. It caches the source IP of the
+// packets recieved with an expiration time of 5 minutes. Takes a filter and
+// the device name as arguments.
+func (pc *Paccap) LiveCapture(filter, device string) {
 	fmt.Println(banner)
 	logger.Info("[PacCap ] Capturing NIC to read the packets...")
 	fmt.Println()
@@ -107,11 +110,12 @@ func (pc *paccap) LiveCapture(filter, device string) {
 		logger.Infof("[PacCap ] Packet Captured! SOURCE %v:%v | DESTINATION %v:%v",
 			sip, spn, dip, dpn)
 		// observe cache hits
-		// _, found := pc.ipcache.Get(sip)
-		// if found {
-		// 	logger.Infof("[PacCap ] Cache hit!")
-		// }
-		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+		_, found := pc.ipcache.Get(sip)
+		if !found {
+			pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+		} else if pc.lc {
+			logger.Infof("[PacCap ] Cache hit! The above packet is already in cache.")
+		}
 		fmt.Println()
 	}
 }
@@ -161,7 +165,7 @@ func getPackets(filter, device string) (*gopacket.PacketSource, error) {
 	return packetSource, nil
 }
 
-// GetIPAddresses returns the IP addresses of source and
+// getIPAddresses returns the IP addresses of source and
 // Destination
 func getIPAddresses(packet gopacket.Packet) (string, string) {
 	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
@@ -171,11 +175,11 @@ func getIPAddresses(packet gopacket.Packet) (string, string) {
 		ip, _ := ipLayer.(*layers.IPv6)
 		return ip.SrcIP.String(), ip.DstIP.String()
 	}
-	log.Errorf("[PacCap ] Couldn't inspect IP payload.")
+	log.Errorf("[PacCap ] Couldn't inspect Network Layer.")
 	return "nil", "nil"
 }
 
-// GetPortAddresses returns the Port addresses of source and
+// getPortAddresses returns the Port addresses of source and
 // Destination
 func getPortAddresses(packet gopacket.Packet) (string, string) {
 	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
@@ -186,6 +190,6 @@ func getPortAddresses(packet gopacket.Packet) (string, string) {
 		udp, _ := udpLayer.(*layers.UDP)
 		return udp.SrcPort.String(), udp.DstPort.String()
 	}
-	log.Errorf("[PacCap ] Couldn't inspect Transport Layer payload.")
+	log.Errorf("[PacCap ] Couldn't inspect Transport Layer.")
 	return "nil", "nil"
 }
