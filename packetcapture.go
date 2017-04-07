@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/patrickmn/go-cache"
 )
 
 /////////////////////////
@@ -39,40 +41,69 @@ var (
 
 var logger = log.New()
 
+type paccap struct {
+	ipcache *cache.Cache
+}
+
 /////////////////////////
 //  Exposed Functions  //
 /////////////////////////
 
+// PacketCapture creates a new instance of the packet capturing
+// device.
+func PacketCapture() *paccap {
+	// create a new cache with 5 minute expiration
+	// and a purge time of 5 minutes
+	ipc := cache.New(5*time.Minute, 5*time.Minute)
+	// new instance of paccap
+	pc := &paccap{ipcache: ipc}
+	return pc
+}
+
 // ReadPcap reads the pcap files from the specified path and
 // logs the packet details.
-func ReadPcap(filter, path string) {
+func (pc *paccap) ReadPcap(filter, path string) {
 	fmt.Println(banner)
-	// TODO: Logging
+	logger.Infof("[PacCap ] Starting to read from pcap file...")
+	fmt.Println()
 	packetSource, err := readPackets(filter, path)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 	for packet := range packetSource.Packets() {
-		// DO something
-		// Insert a delay for the information
-		fmt.Println(packet)
+		//TODO: Insert a delay for the streamlined info
+		sip, dip := getIPAddresses(packet)
+		spn, dpn := getPortAddresses(packet)
+		logger.Infof("[PacCap ] Packet Captured! SOURCE %v:%v | DESTINATION %v:%v",
+			sip, spn, dip, dpn)
+		// adding src ip and destination to the cache
+		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+		fmt.Println()
 	}
 }
 
 // LiveCapture attaches with the NIC specified and starts capturing
 // the packets logging the packet details
-func LiveCapture(filter, device string) {
+func (pc *paccap) LiveCapture(filter, device string) {
 	fmt.Println(banner)
-
+	logger.Info("[PacCap ] Capturing NIC to read the packets...")
+	fmt.Println()
 	packetSource, err := getPackets(filter, device)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	for packet := range packetSource.Packets() {
-		// DO something
-		fmt.Println(packet)
+		sip, dip := getIPAddresses(packet)
+		spn, dpn := getPortAddresses(packet)
+		logger.Infof("[PacCap ] Packet Captured! SOURCE %v:%v | DESTINATION %v:%v",
+			sip, spn, dip, dpn)
+		// observe cache hits
+		// _, found := pc.ipcache.Get(sip)
+		// if found {
+		// 	logger.Infof("[PacCap ] Cache hit!")
+		// }
+		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+		fmt.Println()
 	}
 }
 
@@ -80,8 +111,7 @@ func LiveCapture(filter, device string) {
 //   Helper Functions  //
 /////////////////////////
 
-// getPackets returns the PacketSource for analysing the packets.
-
+// readPackets
 func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	handle, err := pcap.OpenOffline(path)
 	if err != nil {
@@ -99,6 +129,7 @@ func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	return packetSource, nil
 }
 
+// getPackets returns the PacketSource for analysing the packets.
 func getPackets(filter, device string) (*gopacket.PacketSource, error) {
 	handle, err := pcap.OpenLive(
 		device,
@@ -119,4 +150,29 @@ func getPackets(filter, device string) (*gopacket.PacketSource, error) {
 		handle.LinkType(),
 	)
 	return packetSource, nil
+}
+
+// GetIPAddresses returns the IP addresses of source and
+// Destination
+func getIPAddresses(packet gopacket.Packet) (string, string) {
+	if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		ip, _ := ipLayer.(*layers.IPv4)
+		return ip.SrcIP.String(), ip.DstIP.String()
+	} else if ipLayer := packet.Layer(layers.LayerTypeIPv6); ipLayer != nil {
+		ip, _ := ipLayer.(*layers.IPv6)
+		return ip.SrcIP.String(), ip.DstIP.String()
+	}
+	log.Errorf("[PacCap ] Couldn't inspect IP payload.")
+	return "nil", "nil"
+}
+
+// GetPortAddresses returns the Port addresses of source and
+// Destination
+func getPortAddresses(packet gopacket.Packet) (string, string) {
+	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+		tcp, _ := tcpLayer.(*layers.TCP)
+		return tcp.SrcPort.String(), tcp.DstPort.String()
+	}
+	log.Errorf("[PacCap ] Couldn't inspect TCP payload.")
+	return "nil", "nil"
 }
