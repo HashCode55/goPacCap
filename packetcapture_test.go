@@ -4,10 +4,16 @@ import (
 	"testing"
 )
 
-// This is a test function for testing travis testing
-func TestAverage(t *testing.T) {
-	v := 1.5
-	if v != 1.5 {
-		t.Error("Expected 1.5, got ", v)
+func TestReadPCAP(t *testing.T) {
+	_, err := readPackets("tcp", "testdata/test1.pcap")
+	if err != nil {
+		t.Fail()
+	}
+}
+
+func TestLiveGetPackets(t *testing.T) {
+	_, err := getPackets("tcp", "en0")
+	if err != nil {
+		t.Fail()
 	}
 }

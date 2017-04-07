@@ -1,4 +1,4 @@
-// Package paccap provides as easy-to-use interface for capturing
+// Package paccap provides an easy-to-use interface for capturing
 // and analysing the packets.
 package gopaccap
 
@@ -62,7 +62,7 @@ func PacketCapture() *paccap {
 
 // ReadPcap reads the pcap files from the specified path and
 // logs the packet details.
-func (pc *paccap) ReadPcap(filter, path string) {
+func (pc *paccap) ReadPcap(filter, path string) []string {
 	fmt.Println(banner)
 	logger.Infof("[PacCap ] Starting to read from pcap file...")
 	fmt.Println()
@@ -70,16 +70,24 @@ func (pc *paccap) ReadPcap(filter, path string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	var packetdetails []string
+
 	for packet := range packetSource.Packets() {
 		//TODO: Insert a delay for the streamlined info
 		sip, dip := getIPAddresses(packet)
 		spn, dpn := getPortAddresses(packet)
 		logger.Infof("[PacCap ] Packet Captured! SOURCE %v:%v | DESTINATION %v:%v",
 			sip, spn, dip, dpn)
+
+		s := fmt.Sprintf("src %s:%s | dst %s:%s", sip, spn, dip, dpn)
+		packetdetails = append(packetdetails, s)
+
 		// adding src ip and destination to the cache
 		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
 		fmt.Println()
 	}
+	return packetdetails
 }
 
 // LiveCapture attaches with the NIC specified and starts capturing
@@ -92,6 +100,7 @@ func (pc *paccap) LiveCapture(filter, device string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	for packet := range packetSource.Packets() {
 		sip, dip := getIPAddresses(packet)
 		spn, dpn := getPortAddresses(packet)
@@ -173,6 +182,10 @@ func getPortAddresses(packet gopacket.Packet) (string, string) {
 		tcp, _ := tcpLayer.(*layers.TCP)
 		return tcp.SrcPort.String(), tcp.DstPort.String()
 	}
-	log.Errorf("[PacCap ] Couldn't inspect TCP payload.")
+	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+		udp, _ := udpLayer.(*layers.UDP)
+		return udp.SrcPort.String(), udp.DstPort.String()
+	}
+	log.Errorf("[PacCap ] Couldn't inspect Transport Layer payload.")
 	return "nil", "nil"
 }
