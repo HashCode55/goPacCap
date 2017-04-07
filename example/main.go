@@ -1,11 +1,12 @@
 package main
 
+// TODO: No absolute imports
 import (
-	"./paccap"
+	".."
 	"fmt"
 )
 
 func main() {
 	fmt.Println("worked")
-	paccap.LiveCapture("TCP", "et0")
+	gopaccap.LiveCapture("tcp", "en0")
 }

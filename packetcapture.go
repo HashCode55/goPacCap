@@ -1,6 +1,6 @@
 // Package paccap provides as easy-to-use interface for capturing
 // and analysing the packets.
-package paccap
+package gopaccap
 
 // TODO: Expose two functions - ReadPcap and LiveCapture
 // TODO: implement cache for keeping src IP and destination port, expiring after 5 minutes
@@ -37,6 +37,8 @@ var (
 	timeout      time.Duration = -1 * time.Second
 )
 
+var logger = log.New()
+
 /////////////////////////
 //  Exposed Functions  //
 /////////////////////////
@@ -47,11 +49,13 @@ func ReadPcap(filter, path string) {
 	fmt.Println(banner)
 	// TODO: Logging
 	packetSource, err := readPackets(filter, path)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	for packet := range packetSource.Packets() {
 		// DO something
+		// Insert a delay for the information
 		fmt.Println(packet)
 	}
 }
@@ -86,7 +90,7 @@ func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	// set the BPF filter
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		return nil, err
+		log.Fatal("Check the filter. Possibly there is a syntax error.")
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
@@ -108,7 +112,7 @@ func getPackets(filter, device string) (*gopacket.PacketSource, error) {
 	// set the filter to monitor HTTP traffic for now
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		return nil, err
+		log.Fatal("Check the filter. Possibly there is a syntax error.")
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
