@@ -9,5 +9,5 @@ import (
 func main() {
 	fmt.Println("worked")
 	pc := gopaccap.PacketCapture()
-	pc.LiveCapture("tcp", "en0")
+	_ = pc.ReadPcap("tcp", "/Users/mehulahuja/Desktop/gopacketcap/testdata/test2.pcap")
 }
