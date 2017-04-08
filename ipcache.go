@@ -1,6 +1,3 @@
-// Package paccap provides an easy-to-use interface for capturing
-// and inspecting the packets. Along comes with it is a very miniscule
-// implementation of IPCache.
 package gopaccap
 
 import (

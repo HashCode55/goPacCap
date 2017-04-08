@@ -53,11 +53,16 @@ pc.LiveCapture("tcp", "your NIC interface name")
 
 ## Running the tests
 
+
 To run the tests, open the root of project and 
 
 ```
 go test
 ```
+
+## Documentation 
+
+https://godoc.org/github.com/HashCode55/goPacCap
 
 ## Authors
 
