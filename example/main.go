@@ -5,6 +5,6 @@ import (
 )
 
 func main() {
-	pc := gopaccap.PacketCapture(5, true)
+	pc := gopaccap.PacketCapture(5, false)
 	pc.LiveCapture("tcp", "en0")
 }

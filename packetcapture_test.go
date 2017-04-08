@@ -1,14 +1,14 @@
 package gopaccap
 
 import (
-	"github.com/patrickmn/go-cache"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReadPCAP(t *testing.T) {
 	_, err := readPackets("tcp", "testdata/test1.pcap")
-	if err != nil {
+	if err == nil {
 		t.Errorf("Couldn't read pcap files.")
 	}
 }
@@ -65,7 +65,7 @@ func TestCache(t *testing.T) {
 	for packet := range ps.Packets() {
 		sip, _ := getIPAddresses(packet)
 		_, dpn := getPortAddresses(packet)
-		pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+		pc.ipcache.Set(sip, dpn)
 	}
 	_, found := pc.ipcache.Get("172.31.150.187")
 	if !found {
@@ -78,5 +78,31 @@ func TestCache(t *testing.T) {
 	_, found = pc.ipcache.Get("54.254.224.187")
 	if !found {
 		t.Errorf("IP not cached.")
+	}
+}
+
+func TestCacheExpiration(t *testing.T) {
+	c := NewIPCache(1*time.Second, 2*time.Second)
+	c.Set("dummyIP", "dummyPort")
+	for i := 0; i < 2; i += 1 {
+		// The entry should be expired after 2 seconds
+		time.Sleep(2 * time.Second)
+		_, found := c.Get("dummyIP")
+		if found {
+			t.Errorf("Cache is not expiring the entries.")
+		}
+	}
+}
+
+func TestCacheDeletion(t *testing.T) {
+	c := NewIPCache(1*time.Second, 2*time.Second)
+	c.Set("dummyIP", "dummyPort")
+	for i := 0; i < 2; i += 1 {
+		// The entry should be deleted after 3 seconds
+		time.Sleep(3 * time.Second)
+		found := c.InspectCache("dummyIP")
+		if found {
+			t.Errorf("Cache is not deleting the entries.")
+		}
 	}
 }

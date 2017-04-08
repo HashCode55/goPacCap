@@ -1,8 +1,7 @@
 // Package paccap provides an easy-to-use interface for capturing
-// and inspecting the packets.
+// and inspecting the packets. Along comes with it is a very miniscule
+// implementation of IPCache.
 package gopaccap
-
-// TODO: implement cache from scratch.
 
 import (
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/patrickmn/go-cache"
 )
 
 /////////////////////////
@@ -41,10 +39,10 @@ var (
 var logger = log.New()
 
 // Paccap is the enclosing packet capture struct. It encapsulates a
-// *cache.Cache object and a flag for logging the cache.
+// *IPCache object and a flag for logging the cache.
 type Paccap struct {
-	ipcache *cache.Cache // cache object
-	lc      bool         // flag for caching the log. Ignored while reading pcap files.
+	ipcache *IPCache // cache object
+	lc      bool     // flag for caching the log. Ignored while reading pcap files.
 }
 
 /////////////////////////
@@ -52,14 +50,15 @@ type Paccap struct {
 /////////////////////////
 
 // PacketCapture creates a new instance of the Paccap
-// struct initialising the cache.
+// struct initialising the ipcache.
 // It takes a two arguments, cache expiration time and
 // a bool value specifying whether to log cache hits or not.
 func PacketCapture(exptime int, logcache bool) *Paccap {
-	// create a new cache with 'exptime' mins expiration
-	// and a purge time of 'exptime'.
+	// create a new ipcache with et as expiration time
 	et := time.Duration(exptime)
-	ipc := cache.New(et*time.Minute, et*time.Minute)
+	// tick interval after which the entries are deleted
+	ti := time.Duration(exptime + 1)
+	ipc := NewIPCache(et*time.Minute, ti*time.Minute)
 	// new instance of Paccap
 	pc := &Paccap{ipcache: ipc, lc: logcache}
 	return pc
@@ -93,7 +92,7 @@ func (pc *Paccap) ReadPcap(filter, path string) []string {
 
 // LiveCapture attaches with the NIC specified and starts capturing
 // the packets logging the packet details. It caches the source IP of the
-// packets recieved with an expiration time of 5 minutes. Takes a filter and
+// packets recieved with the given expiration time. Takes BPF(filter) and
 // the device name as arguments.
 func (pc *Paccap) LiveCapture(filter, device string) {
 	fmt.Println(banner)
@@ -112,7 +111,7 @@ func (pc *Paccap) LiveCapture(filter, device string) {
 		// observe cache hits
 		_, found := pc.ipcache.Get(sip)
 		if !found {
-			pc.ipcache.Set(sip, dpn, cache.DefaultExpiration)
+			pc.ipcache.Set(sip, dpn)
 		} else if pc.lc {
 			logger.Infof("[PacCap ] Cache hit! The above packet is already in cache.")
 		}
@@ -124,7 +123,6 @@ func (pc *Paccap) LiveCapture(filter, device string) {
 //   Helper Functions  //
 /////////////////////////
 
-// readPackets
 func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	handle, err := pcap.OpenOffline(path)
 	if err != nil {
