@@ -8,7 +8,7 @@ import (
 
 func TestReadPCAP(t *testing.T) {
 	_, err := readPackets("tcp", "testdata/test1.pcap")
-	if err == nil {
+	if err != nil {
 		t.Errorf("Couldn't read pcap files.")
 	}
 }
@@ -104,5 +104,17 @@ func TestCacheDeletion(t *testing.T) {
 		if found {
 			t.Errorf("Cache is not deleting the entries.")
 		}
+	}
+}
+
+func TestUpdateCache(t *testing.T) {
+	ps, _ := readPackets("tcp", "testdata/test0.pcap")
+	packet, _ := ps.NextPacket()
+	// create a new packet capture object
+	pc := PacketCapture(5, false)
+	pc.UpdateCache(packet)
+	_, found := pc.ipcache.Get("172.31.150.187")
+	if !found {
+		t.Errorf("Cache update failed")
 	}
 }

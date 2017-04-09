@@ -38,10 +38,12 @@ var (
 var logger = log.New()
 
 // Paccap is the enclosing packet capture struct. It encapsulates a
-// *IPCache object and a flag for logging the cache.
+// *IPCache object, a flag for logging the cache and a boolean channel
+// exiting the LiveCapture goroutine.
 type Paccap struct {
 	ipcache *IPCache // cache object
 	lc      bool     // flag for caching the log. Ignored while reading pcap files.
+	Exit    chan bool
 }
 
 /////////////////////////
@@ -58,8 +60,12 @@ func PacketCapture(exptime int, logcache bool) *Paccap {
 	// tick interval after which the entries are deleted
 	ti := time.Duration(exptime + 1)
 	ipc := NewIPCache(et*time.Minute, ti*time.Minute)
+
+	// make a channel to exit if Live capture launched
+	// ignore if readpackets used
+	ex := make(chan bool)
 	// new instance of Paccap
-	pc := &Paccap{ipcache: ipc, lc: logcache}
+	pc := &Paccap{ipcache: ipc, lc: logcache, Exit: ex}
 	return pc
 }
 
@@ -118,6 +124,21 @@ func (pc *Paccap) LiveCapture(filter, device string) {
 	}
 }
 
+// UpdateCache take a packet and updates the cache with the
+// src IP and Destination Port. This way we can insert entries in the cache
+// before starting a LiveCapture or after starting LiveCapture as a goroutine.
+func (pc *Paccap) UpdateCache(packet gopacket.Packet) {
+	sip, _ := getIPAddresses(packet)
+	_, dpn := getPortAddresses(packet)
+	// check if its already in cache
+	_, found := pc.ipcache.Get(sip)
+	if !found {
+		pc.ipcache.Set(sip, dpn)
+	} else if pc.lc {
+		logger.Infof("[PacCap ] Failed to update cache. Key already in cache.")
+	}
+}
+
 /////////////////////////
 //   Helper Functions  //
 /////////////////////////
@@ -130,7 +151,7 @@ func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	// set the BPF filter
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal("Check the filter. Possibly there is a syntax error.")
+		log.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
@@ -153,7 +174,7 @@ func getPackets(filter, device string) (*gopacket.PacketSource, error) {
 	// set the filter to monitor HTTP traffic for now
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal("Check the filter. Possibly there is a syntax error.")
+		log.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
