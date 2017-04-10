@@ -1,6 +1,9 @@
 package gopaccap
 
 import (
+	"encoding/gob"
+	log "github.com/Sirupsen/logrus"
+	"os"
 	"sync"
 	"time"
 )
@@ -9,9 +12,12 @@ import (
 //      Structs        //
 /////////////////////////
 
-type portObject struct {
-	port       string
-	expiration int64
+// PortObject is an encapsulation over the Port entries.
+type PortObject struct {
+	// Port is the destination Port which the cache will store.
+	Port string
+	// Expiration is the time after which the cache entry will be invalidated.
+	Expiration int64
 }
 
 // IPCache is a simple cache implementation which has four struct variables.
@@ -19,10 +25,14 @@ type portObject struct {
 // IPTable is a map object which stores the entries of cache as key value pairs.
 // And TickInterval is the actual time after which the entries are deleted.
 type IPCache struct {
-	DefaultExpiration time.Duration         // Expiration time of the items
-	IPTable           map[string]portObject // stores the ip as key and port as value
-	Mu                sync.RWMutex          // Mutex to control the access
-	TickInterval      time.Duration         // The purge time for the cache
+	// DefaultExpiration is the Expiration time of the items
+	DefaultExpiration time.Duration
+	// IPTable stores the ip as key and Port as value
+	IPTable map[string]PortObject
+	// Mu is a mutex to control the access
+	Mu sync.RWMutex
+	// TickInterval is the purge time for the cache
+	TickInterval time.Duration
 }
 
 /////////////////////////
@@ -37,46 +47,46 @@ func (c *IPCache) Set(packet Packet) {
 	if found {
 		return
 	}
-	// add the default expiration to the current time
+	// add the default Expiration to the current time
 	e := time.Now().Add(c.DefaultExpiration).UnixNano()
 	// thread safe setting of the map
 	// while this is accessing it no other set calls can be made
 	c.Mu.Lock()
-	c.IPTable[packet.FromIP] = portObject{
-		port:       packet.ToPort,
-		expiration: e,
+	c.IPTable[packet.FromIP] = PortObject{
+		Port:       packet.ToPort,
+		Expiration: e,
 	}
 	c.Mu.Unlock()
 }
 
-// Gets returns the corresponding value (that is port)
+// Gets returns the corresponding value (that is Port)
 // to the IP given as argument.
 func (c *IPCache) Get(ip string) (string, bool) {
 	c.Mu.RLock()
-	portobj, found := c.IPTable[ip]
+	Portobj, found := c.IPTable[ip]
 	if !found {
 		c.Mu.RUnlock()
 		// the ip was not found
 		return "", false
 	}
-	if time.Now().UnixNano() > portobj.expiration {
+	if time.Now().UnixNano() > Portobj.Expiration {
 		c.Mu.RUnlock()
 		// the entry has expired
 		return "", false
 	}
 	c.Mu.RUnlock()
 	// the entry was found
-	return portobj.port, true
+	return Portobj.Port, true
 }
 
 // GetIPTable returns the snapshot of the IPTable
 // as a map object
-func (c *IPCache) GetIPTable() map[string]portObject {
+func (c *IPCache) GetIPTable() map[string]PortObject {
 	c.Mu.RLock()
-	m := make(map[string]portObject, len(c.IPTable))
+	m := make(map[string]PortObject, len(c.IPTable))
 	now := time.Now().UnixNano()
 	for k, v := range c.IPTable {
-		if now > v.expiration {
+		if now > v.Expiration {
 			continue
 		}
 		m[k] = v
@@ -88,13 +98,13 @@ func (c *IPCache) GetIPTable() map[string]portObject {
 // FlushIPCache clears the IPTable
 func (c *IPCache) FlushIPCache() {
 	c.Mu.Lock()
-	c.IPTable = map[string]portObject{}
+	c.IPTable = map[string]PortObject{}
 	c.Mu.Unlock()
 }
 
 // InspectCache takes the IP address as string returns
 // a bool value telling whether the value is still in the
-// IP table or not.
+// IP table or not. This is for testing.
 func (c *IPCache) InspectCache(ip string) bool {
 	_, found := c.IPTable[ip]
 	if found {
@@ -103,14 +113,36 @@ func (c *IPCache) InspectCache(ip string) bool {
 	return false
 }
 
-// NewIPCache creates returns a new IPCache. It takes two values as
-// arguments, Defaultexpiration which is the expiration time for the
-// cache entries and Tickinterval is the purge time for the expired
-// entries
-func NewIPCache(Defaultexpiration, Tickinterval time.Duration) *IPCache {
-	IPTable := make(map[string]portObject)
+// SaveIPCache saves the IPTable in a file
+func (c *IPCache) SaveIPCache(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := gob.NewEncoder(f)
+	if err := enc.Encode(c.IPTable); err != nil {
+		return err
+	}
+	return nil
+}
+
+// NewIPCache creates returns a new IPCache. It takes four values as
+// arguments, DefaultExpiration which is the Expiration time for the
+// cache entries, Tickinterval is the purge time for the expired
+// entries, reacFromCache is a boolean variable which flags whether to read from
+// file or not and finally the path to read from.
+func NewIPCache(DefaultExpiration, Tickinterval time.Duration,
+	readCache bool, path string) *IPCache {
+
+	var IPTable map[string]PortObject
+	if readCache {
+		IPTable = loadIPCache(path)
+	} else {
+		IPTable = make(map[string]PortObject)
+	}
 	c := &IPCache{
-		DefaultExpiration: Defaultexpiration,
+		DefaultExpiration: DefaultExpiration,
 		IPTable:           IPTable,
 		TickInterval:      Tickinterval,
 	}
@@ -122,6 +154,20 @@ func NewIPCache(Defaultexpiration, Tickinterval time.Duration) *IPCache {
 //   Helper Functions  //
 /////////////////////////
 
+func loadIPCache(path string) (iptable map[string]PortObject) {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal("Can't open file.")
+	}
+	defer f.Close()
+	enc := gob.NewDecoder(f)
+	if err := enc.Decode(&iptable); err != nil {
+		log.Fatal("Can't decode")
+	}
+	log.Info("Cache successfully loaded.")
+	return iptable
+}
+
 // Delete all expired items from the IPCache.
 func (c *IPCache) deleteExpired() {
 	// current time
@@ -130,7 +176,7 @@ func (c *IPCache) deleteExpired() {
 
 	c.Mu.Lock()
 	for k, v := range c.IPTable {
-		if now > v.expiration {
+		if now > v.Expiration {
 			delete(c.IPTable, k)
 		}
 	}
@@ -151,6 +197,6 @@ func run(c *IPCache) {
 
 func runManager(c *IPCache, ci time.Duration) {
 	// run as a goroutine and this is where the Mutex lock becomes of
-	// utmost importance
+	// utmost imPortance
 	go run(c)
 }

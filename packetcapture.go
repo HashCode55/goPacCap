@@ -41,7 +41,10 @@ func (p Packet) String() string {
 // *IPCache object, and a packet channel which stores the
 // incoming packets
 type Paccap struct {
-	IPCache  *IPCache // cache object
+	// IPCache is the cache object which'll store key value pairs
+	// with source IP as key and destination port as value.
+	IPCache *IPCache
+	// PackChan is a channel which gets the detected channels.
 	PackChan chan Packet
 }
 
@@ -51,14 +54,15 @@ type Paccap struct {
 
 // PacketCapture creates a new instance of the Paccap
 // struct initialising the IPCache.
-// It takes a two arguments, cache expiration time and
-// a bool value specifying whether to log cache hits or not.
-func PacketCapture(exptime int) *Paccap {
+// It takes a three arguments, cache expiration time and
+// a bool value specifying whether to read cache from disc or not
+// and the path specifying the location on disc.
+func PacketCapture(exptime int, readCache bool, path string) *Paccap {
 	// create a new IPCache with et as expiration time
 	et := time.Duration(exptime)
 	// tick interval after which the entries are deleted
 	ti := time.Duration(exptime + 1)
-	ipc := NewIPCache(et*time.Minute, ti*time.Minute)
+	ipc := NewIPCache(et*time.Minute, ti*time.Minute, readCache, path)
 	// create a new channel
 	packchan := make(chan Packet)
 	// new instance of Paccap
@@ -75,7 +79,7 @@ func (pc *Paccap) ReadPcap(filter, path string) {
 	logger.Infof("[PacCap ] Starting to read from pcap file...")
 	packetSource, err := readPackets(filter, path)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	for packet := range packetSource.Packets() {
@@ -109,7 +113,7 @@ func (pc *Paccap) LiveCapture(filter, device string, snapshotlen int32,
 	logger.Info("[PacCap ] Capturing NIC to read the packets...")
 	packetSource, err := getPackets(filter, device, snapshotlen, promiscuous, timeout)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	for packet := range packetSource.Packets() {
@@ -134,15 +138,16 @@ func (pc *Paccap) LiveCapture(filter, device string, snapshotlen int32,
 // src IP and Destination Port. This way we can insert entries in the cache
 // before starting a LiveCapture or after starting LiveCapture as a goroutine.
 func (pc *Paccap) UpdateCache(packet gopacket.Packet) {
-	sip, _ := getIPAddresses(packet)
-	_, dpn := getPortAddresses(packet)
-	// check if its already in cache
-	_, found := pc.ipcache.Get(sip)
-	if !found {
-		pc.ipcache.Set(sip, dpn)
-	} else if pc.lc {
-		logger.Infof("[PacCap ] Failed to update cache. Key already in cache.")
+	sip, dip, err := getIPAddresses(packet)
+	if err != nil {
+		log.Errorf("[paccap ] %s", err.Error())
 	}
+	spn, dpn, err := getPortAddresses(packet)
+	if err != nil {
+		log.Errorf("[paccap ] %s", err.Error())
+	}
+	pkt := Packet{FromIP: sip, ToIP: dip, FromPort: spn, ToPort: dpn}
+	pc.IPCache.Set(pkt)
 }
 
 /////////////////////////
@@ -157,7 +162,7 @@ func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	// set the BPF filter
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
@@ -181,7 +186,7 @@ func getPackets(filter, device string, snapshotlen int32,
 	// set the filter to monitor HTTP traffic for now
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
