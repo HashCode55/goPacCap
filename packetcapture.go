@@ -59,10 +59,8 @@ func PacketCapture(exptime int) *Paccap {
 	// tick interval after which the entries are deleted
 	ti := time.Duration(exptime + 1)
 	ipc := NewIPCache(et*time.Minute, ti*time.Minute)
-
 	// create a new channel
 	packchan := make(chan Packet)
-
 	// new instance of Paccap
 	pc := &Paccap{IPCache: ipc, PackChan: packchan}
 	return pc
@@ -132,6 +130,21 @@ func (pc *Paccap) LiveCapture(filter, device string, snapshotlen int32,
 	}
 }
 
+// UpdateCache take a packet and updates the cache with the
+// src IP and Destination Port. This way we can insert entries in the cache
+// before starting a LiveCapture or after starting LiveCapture as a goroutine.
+func (pc *Paccap) UpdateCache(packet gopacket.Packet) {
+	sip, _ := getIPAddresses(packet)
+	_, dpn := getPortAddresses(packet)
+	// check if its already in cache
+	_, found := pc.ipcache.Get(sip)
+	if !found {
+		pc.ipcache.Set(sip, dpn)
+	} else if pc.lc {
+		logger.Infof("[PacCap ] Failed to update cache. Key already in cache.")
+	}
+}
+
 /////////////////////////
 //   Helper Functions  //
 /////////////////////////
@@ -144,7 +157,7 @@ func readPackets(filter, path string) (*gopacket.PacketSource, error) {
 	// set the BPF filter
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal("Check the filter. Possibly there is a syntax error.")
+		log.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
@@ -168,7 +181,7 @@ func getPackets(filter, device string, snapshotlen int32,
 	// set the filter to monitor HTTP traffic for now
 	err = handle.SetBPFFilter(filter)
 	if err != nil {
-		log.Fatal("Check the filter. Possibly there is a syntax error.")
+		log.Fatal(err)
 	}
 	packetSource := gopacket.NewPacketSource(
 		handle,
