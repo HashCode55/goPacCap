@@ -1,9 +1,9 @@
 package main
 
 import (
-	".."
 	"bufio"
 	log "github.com/Sirupsen/logrus"
+	"github.com/hashcode55/gopaccap"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,7 +20,7 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
-	pc := gopaccap.PacketCapture(5, true, "../testgob/testload.gob")
+	pc := gopaccap.PacketCapture(5, false, "")
 
 	// run capture as a goroutine and yay!
 	go pc.LiveCapture("tcp", "en0", 65535, false, -1*time.Second)
@@ -45,7 +45,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 	if strings.Compare(text, "y\n") == 0 {
-		err := pc.IPCache.SaveIPCache("../testgob/testsave.gob")
+		err := pc.IPCache.SaveIPCache("testsave.gob")
 		if err != nil {
 			log.Fatal(err.Error())
 		}

@@ -16,6 +16,7 @@ go get github.com/hashcode55/gopaccap
 
 ```
 go get github.com/google/gopacket
+go get github.com/Sirupsen/logrus
 ```
 
 ### Usage
@@ -24,28 +25,34 @@ go get github.com/google/gopacket
 package main
 
 import (
-	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"github.com/hashcode55/gopaccap"
 )
 
 func main() {	
-	// First argument is cache expiration time 
-	// followed by a flag for logging the cache hits 
-	pc := gopaccap.PacketCapture(5, true)
-	s := pc.ReadPcap("tcp", "path/to/your/pcap/file")
-	for _, val := range s {
-		// This prints out the packet details 
-		fmt.Println(val) 
+	// first argument is cache expiration time 
+	// second is whetther to read cache from file or not 
+	// third is the path from where to read 
+	pc := gopaccap.PacketCapture(5, false, "")
+
+	// run capture as a goroutine and yay!
+	go pc.LiveCapture("tcp", "en0", 65535, false, -1*time.Second)
+
+	// a simple select statement to receive the packets
+	for {
+		select {
+		case p := <-pc.PackChan:
+			log.Infof("[PacCap ] %s", p)
+		case <-c:
+			breakSel = true
+		}
+		if breakSel {
+			break
+		}
 	}
+	log.Info("Finished Capturing.")
 }
 
-```
-
-**For live capture**
-
-```
-// doesn't return anything
-pc.LiveCapture("tcp", "your NIC interface name")
 ```
 
 <img src="images/gopaccap.gif">

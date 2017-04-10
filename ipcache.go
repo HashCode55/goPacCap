@@ -133,11 +133,20 @@ func (c *IPCache) SaveIPCache(path string) error {
 // entries, reacFromCache is a boolean variable which flags whether to read from
 // file or not and finally the path to read from.
 func NewIPCache(DefaultExpiration, Tickinterval time.Duration,
-	readCache bool, path string) *IPCache {
-
+	readCache bool, path string) (*IPCache, error) {
 	var IPTable map[string]PortObject
+	var err error
 	if readCache {
-		IPTable = loadIPCache(path)
+		IPTable, err = loadIPCache(path)
+		if err != nil {
+			return nil, err
+		}
+		// update the expiration time of the cache entries
+		for k, _ := range IPTable {
+			var tmp = IPTable[k]
+			tmp.Expiration = time.Now().Add(DefaultExpiration).UnixNano()
+			IPTable[k] = tmp
+		}
 	} else {
 		IPTable = make(map[string]PortObject)
 	}
@@ -147,25 +156,26 @@ func NewIPCache(DefaultExpiration, Tickinterval time.Duration,
 		TickInterval:      Tickinterval,
 	}
 	runManager(c, Tickinterval)
-	return c
+	return c, nil
 }
 
 /////////////////////////
 //   Helper Functions  //
 /////////////////////////
 
-func loadIPCache(path string) (iptable map[string]PortObject) {
+func loadIPCache(path string) (map[string]PortObject, error) {
+	var iptable map[string]PortObject
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatal("Can't open file.")
+		return nil, err
 	}
 	defer f.Close()
 	enc := gob.NewDecoder(f)
 	if err := enc.Decode(&iptable); err != nil {
-		log.Fatal("Can't decode")
+		return nil, err
 	}
 	log.Info("Cache successfully loaded.")
-	return iptable
+	return iptable, nil
 }
 
 // Delete all expired items from the IPCache.

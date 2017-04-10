@@ -62,7 +62,10 @@ func PacketCapture(exptime int, readCache bool, path string) *Paccap {
 	et := time.Duration(exptime)
 	// tick interval after which the entries are deleted
 	ti := time.Duration(exptime + 1)
-	ipc := NewIPCache(et*time.Minute, ti*time.Minute, readCache, path)
+	ipc, err := NewIPCache(et*time.Minute, ti*time.Minute, readCache, path)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 	// create a new channel
 	packchan := make(chan Packet)
 	// new instance of Paccap
@@ -75,31 +78,31 @@ func PacketCapture(exptime int, readCache bool, path string) *Paccap {
 // specified as BPF, and the path of the pcap files. As it recognizes the packets
 // it keeps on pushing the packets into a channel shared with the host process that is the
 // client.
-func (pc *Paccap) ReadPcap(filter, path string) {
-	logger.Infof("[PacCap ] Starting to read from pcap file...")
+func (pc *Paccap) ReadPcap(filter, path string) ([]Packet, error) {
+	var packetArray []Packet
+	log.Info("[PacCap ] Starting to read from pcap file...")
 	packetSource, err := readPackets(filter, path)
 	if err != nil {
-		logger.Fatal(err)
+		log.Fatal(err)
 	}
-
 	for packet := range packetSource.Packets() {
 		sip, dip, err := getIPAddresses(packet)
 		// if not recognized, log
 		if err != nil {
-			log.Errorf("[paccap ] %s", err.Error())
+			return nil, err
 		}
 		spn, dpn, err := getPortAddresses(packet)
 		// log if not recognized
 		if err != nil {
-			log.Errorf("[paccap ] %s", err.Error())
+			return nil, err
 		}
-
 		pkt := Packet{FromIP: sip, ToIP: dip, FromPort: spn, ToPort: dpn}
-		pc.PackChan <- pkt
-
+		packetArray = append(packetArray, pkt)
 		// populating the cache
 		pc.IPCache.Set(pkt)
 	}
+	log.Info("[PacCap ] Read successfully finished.")
+	return packetArray, nil
 }
 
 // LiveCapture attaches with the NIC specified and starts capturing
