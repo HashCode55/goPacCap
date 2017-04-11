@@ -1,0 +1,8 @@
+dependencies:
+  pre:
+    - sudo apt-get update 
+    - sudo apt-get install -y libpcap-dev
+
+test:
+  override:
+    - go test    
