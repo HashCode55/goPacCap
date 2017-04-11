@@ -10,9 +10,6 @@ import (
 	"time"
 )
 
-// PATH to read from - the cache
-var logger = log.New()
-
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 	breakSel := false
@@ -29,9 +26,9 @@ func main() {
 	for {
 		select {
 		case p := <-pc.PackChan:
-			logger.Infof("[PacCap ] %s", p)
+			log.Infof("[PacCap ] %s", p)
 		case <-c:
-			log.Infof("[PacCap] Exiting Capture. Do you want to save the cache in a file? (y/n)")
+			log.Info("[PacCap] Exiting Capture. Do you want to save the cache in a file? (y/n)")
 			breakSel = true
 		}
 		if breakSel {
@@ -49,6 +46,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		log.Infof("[PacCap] Cache successfully stored on disc.")
+		log.Info("[PacCap] Cache successfully stored on disc.")
 	}
 }

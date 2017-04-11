@@ -30,6 +30,9 @@ import (
 )
 
 func main() {	
+	// boolean flag to break for loop ahead 
+	breakSel := false 
+	
 	// first argument is cache expiration time 
 	// second is whetther to read cache from file or not 
 	// third is the path from where to read 

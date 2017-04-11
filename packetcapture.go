@@ -39,7 +39,7 @@ func (p Packet) String() string {
 
 // Paccap is the enclosing packet capture struct. It encapsulates a
 // *IPCache object, and a packet channel which stores the
-// incoming packets
+// incoming packets.
 type Paccap struct {
 	// IPCache is the cache object which'll store key value pairs
 	// with source IP as key and destination port as value.

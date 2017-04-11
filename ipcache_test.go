@@ -27,6 +27,8 @@ func TestCacheWithLoad(t *testing.T) {
 }
 
 func TestCacheExpiration(t *testing.T) {
+	// NewIPCache is called by PacketCapture but here for testing
+	// I have called it directly.
 	c, err := NewIPCache(time.Microsecond, 2*time.Microsecond, false, "")
 	if err != nil {
 		t.Error(err.Error())
@@ -42,6 +44,7 @@ func TestCacheExpiration(t *testing.T) {
 }
 
 func TestUpdateCache(t *testing.T) {
+	// readPackets is unexported, this is for testing only.
 	ps, _ := readPackets("tcp", "example/test0.pcap")
 	// get just one packet
 	packet, _ := ps.NextPacket()
@@ -55,6 +58,7 @@ func TestUpdateCache(t *testing.T) {
 }
 
 func TestCacheRead(t *testing.T) {
+	// loadIPCache is also unexported, it is exposed by PacketCapture arguments.
 	_, err := loadIPCache("example/testload.gob")
 	if err != nil {
 		t.Error(err.Error())
